@@ -790,6 +790,55 @@
     display:flex;
     flex-direction:column;
   }
+  .cart-table-wrap{
+    overflow-x:auto;
+    background:var(--surface);
+    border:2.5px solid var(--ink);
+    border-radius:14px;
+    margin-bottom:10px;
+    box-shadow:var(--shadow-hard-sm);
+  }
+  .cart-table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:11.5px;
+  }
+  .cart-table thead tr{background:var(--ink);}
+  .cart-table th{
+    color:#fff;
+    font-weight:800;
+    font-size:9.5px;
+    padding:6px 3px;
+    text-align:center;
+    white-space:nowrap;
+  }
+  .cart-table td{
+    padding:5px 3px;
+    border-bottom:1.5px solid var(--line-soft);
+    font-weight:600;
+    font-size:11px;
+    white-space:nowrap;
+    text-align:center;
+  }
+  .cart-table tbody tr:last-child td{border-bottom:none;}
+  .cart-table td.cell-name{font-weight:800;white-space:normal;max-width:64px;text-align:right;}
+  .cart-table td.cell-model{font-family:var(--font-num);color:var(--ink-soft);}
+  .cart-table td.cell-qty{font-family:var(--font-num);font-weight:800;}
+  .cart-table td.cell-num{font-family:var(--font-num);font-weight:800;font-size:10.5px;}
+  .table-cell-input{
+    width:100%;
+    min-width:38px;
+    border:1.5px solid var(--line);
+    border-radius:6px;
+    padding:5px 3px;
+    font-family:var(--font-num);
+    font-size:11px;
+    font-weight:700;
+    background:var(--bg);
+    color:var(--ink);
+    text-align:center;
+  }
+  .table-cell-input:focus{outline:none;border-color:var(--brass);background:var(--surface);}
   .sell-sticky-footer{
     position:fixed;
     bottom:82px;
@@ -2087,7 +2136,10 @@ document.getElementById('txn-table-body').addEventListener('click', (e)=>{
 function reprintInvoice(invoiceId){
   const lines = state.transactions.filter(t=> t.invoiceId===invoiceId && t.type==='sale');
   if(lines.length===0) return;
-  const items = lines.map(t=>({name:t.productName, model:'', qty:t.qty, unitPrice:t.unitPrice, total:t.total, note:t.note||''}));
+  const items = lines.map(t=>{
+    const p = state.products.find(pr=>pr.id===t.productId);
+    return {name:t.productName, model:'', code: p?getProductCode(p):'—', qty:t.qty, unitPrice:t.unitPrice, total:t.total, note:t.note||''};
+  });
   const total = lines.reduce((s,t)=>s+t.total,0);
   const first = lines[0];
   showInvoice({
@@ -2774,39 +2826,41 @@ function renderSellCart(){
   if(sellCart.length===0){
     container.innerHTML = `<div class="empty-state"><div class="small">لسا ما أضفت أي مادة — دوّر عن المادة فوق واختارها</div></div>`;
   } else {
-    container.innerHTML = sellCart.map((item, idx)=>{
+    const rows = sellCart.map((item, idx)=>{
       const p = state.products.find(pr=>pr.id===item.productId);
       const code = p ? getProductCode(p) : '—';
       return `
-      <div class="cart-item-card">
-        <div class="cart-item-head">
-          <span class="cart-item-num">${idx+1}</span>
-          <span class="cart-item-name">${escapeHtml(item.productName)}</span>
-          <span class="cart-item-code">الرمز ${code}</span>
+      <tr>
+        <td class="cell-qty">${idx+1}</td>
+        <td class="cell-model">${code}</td>
+        <td class="cell-name">${escapeHtml(item.productName)}</td>
+        <td><input type="number" class="table-cell-input cart-qty-input" data-idx="${idx}" min="1" step="1" value="${item.qty}"></td>
+        <td><input type="text" class="table-cell-input cart-price-input" data-idx="${idx}" value="${fmt(item.unitPrice)}"></td>
+        <td class="cell-num cart-row-total" data-idx="${idx}">${money(item.qty*item.unitPrice)}</td>
+        <td>
           <button type="button" class="row-icon-btn danger cart-remove" data-idx="${idx}" title="حذف">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
-        </div>
-        <div class="cart-item-fields">
-          <div class="field">
-            <label>الكمية</label>
-            <input type="number" class="cart-cell-input cart-qty-input" data-idx="${idx}" min="1" step="1" value="${item.qty}">
-          </div>
-          <div class="field">
-            <label>سعر البيع</label>
-            <input type="text" class="cart-cell-input cart-price-input" data-idx="${idx}" value="${fmt(item.unitPrice)}">
-          </div>
-          <div class="field">
-            <label>ملاحظات</label>
-            <input type="text" class="cart-cell-input cart-note-input" data-idx="${idx}" value="${escapeHtml(item.note||'')}" placeholder="—">
-          </div>
-        </div>
-        <div class="txn-row" style="padding-top:6px;">
-          <span class="txn-name">المجموع</span>
-          <span class="txn-num cart-row-total" data-idx="${idx}">${money(item.qty*item.unitPrice)}</span>
-        </div>
-      </div>
-    `;}).join('');
+        </td>
+      </tr>`;
+    }).join('');
+    container.innerHTML = `
+      <div class="cart-table-wrap">
+        <table class="cart-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>الرمز</th>
+              <th>المادة</th>
+              <th>الكمية</th>
+              <th>سعر البيع</th>
+              <th>المجموع</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
   }
   updateSellTotals();
 }
@@ -2908,7 +2962,7 @@ document.getElementById('sell-finalize').addEventListener('click', async ()=>{
       paid: sellPaymentType==='credit' ? 0 : total,
       remaining: sellPaymentType==='credit' ? total : 0
     });
-    invoiceItems.push({ name:p.name, model:p.model, qty:item.qty, unitPrice:item.unitPrice, total, note:item.note||'' });
+    invoiceItems.push({ name:p.name, model:p.model, code:getProductCode(p), qty:item.qty, unitPrice:item.unitPrice, total, note:item.note||'' });
   });
   await saveData();
   sellCart = [];
@@ -2952,20 +3006,22 @@ function buildInvoiceText(inv){
 
 function showInvoice(inv){
   const dateStr = inv.date.toLocaleDateString('ar-EG',{day:'numeric',month:'long',year:'numeric'})+' · '+inv.date.toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'});
-  const rows = inv.items.map(it=>`
+  const rows = inv.items.map((it,idx)=>`
     <tr>
+      <td class="cell-qty">${idx+1}</td>
+      <td class="cell-model" style="font-family:var(--font-num);">${it.code||'—'}</td>
       <td class="cell-name">${escapeHtml(it.name)}${it.model?(' <span style="color:var(--ink-soft);font-weight:600;">- '+escapeHtml(it.model)+'</span>'):''}</td>
       <td class="cell-qty">${it.qty}</td>
-      <td class="cell-model">${it.note?escapeHtml(it.note):'—'}</td>
+      <td class="cell-model">قطعة</td>
       <td class="cell-num">${money(it.unitPrice)}</td>
       <td class="cell-num">${money(it.total)}</td>
     </tr>`).join('');
   openModal(`
     <div class="modal-title">فاتورة بيع — باور فون</div>
     <div class="modal-text">${dateStr}${inv.customerName?(' · الزبون: '+escapeHtml(inv.customerName)):''}${inv.customerPhone?(' · '+escapeHtml(inv.customerPhone)):''}</div>
-    <div class="table-wrap" style="display:block;margin-bottom:12px;">
+    <div class="table-wrap" style="display:block;margin-bottom:12px;overflow-x:auto;">
       <table class="data-table">
-        <thead><tr><th>المادة</th><th>الكمية</th><th>ملاحظات</th><th>السعر</th><th>الإجمالي</th></tr></thead>
+        <thead><tr><th>#</th><th>رمز المادة</th><th>اسم المادة</th><th>الكمية</th><th>الوحدة</th><th>السعر الافرادي</th><th>السعر الاجمالي</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
