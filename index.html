@@ -998,7 +998,8 @@
       margin:8px 0 0;
       border-radius:12px;
     }
-    #tab-sell.active{padding-bottom:0;display:flex;flex-direction:column;min-height:calc(100vh - 26px);}
+    #tab-sell.active{padding-bottom:0;display:flex;flex-direction:column;min-height:100%;}
+    #sell-normal-mode{display:flex;flex-direction:column;flex:1;}
     .sell-sticky-footer{margin-top:auto;}
     .sell-grid{
       display:grid;
@@ -1010,12 +1011,14 @@
     #real-app{
       display:grid;
       grid-template-columns:200px 1fr;
+      grid-template-rows:auto 1fr;
       grid-template-areas:
         "header header"
         "nav main";
       align-items:start;
       align-content:start;
-      min-height:100vh;
+      height:100vh;
+      overflow:hidden;
       background:var(--bg);
       border-left:3px solid var(--ink);
       border-right:3px solid var(--ink);
@@ -1028,15 +1031,17 @@
     main{
       grid-area:main;
       padding:0px 32px 26px;
+      height:100%;
+      overflow-y:auto;
     }
     nav.bottom{
       grid-area:nav;
-      position:sticky;
-      top:0;
+      position:static;
       left:auto;
       transform:none;
       max-width:none;
       width:200px;
+      height:100%;
       align-self:stretch;
       flex-direction:column;
       justify-content:flex-start;
@@ -1117,6 +1122,7 @@
     .table-wrap{display:block;}
     .modal-overlay{align-items:center;}
     .modal-box{max-width:420px;border-radius:18px;border-top:3px solid var(--ink);}
+    .modal-box.wide{max-width:640px;}
   }
   @media print{
     body *{visibility:hidden;}
@@ -1201,6 +1207,11 @@
       <!-- بيع -->
       <section class="tab" id="tab-sell">
         <h2 class="section-title"><span>فاتورة بيع<br><small class="page-subtitle">أضف مواد للفاتورة وسجّل عملية البيع</small></span></h2>
+        <div class="toggle-group" id="sell-mode-toggle">
+          <button type="button" class="active" data-mode="sell" id="sell-mode-sell">فاتورة بيع</button>
+          <button type="button" data-mode="returns" id="sell-mode-returns">ترجيع مواد</button>
+        </div>
+        <div id="sell-normal-mode">
         <div class="card cart-total-card compact-form">
           <div class="field-row" style="align-items:flex-end;">
             <div class="field" style="margin-bottom:0;">
@@ -1259,6 +1270,10 @@
           </div>
           <button type="button" class="btn btn-primary" id="sell-finalize" style="margin-top:8px;">تسجيل البيع</button>
         </div>
+        </div>
+        <div id="sell-returns-mode" style="display:none;">
+          <div class="card" id="sell-returns-card"></div>
+        </div>
       </section>
 
       <!-- شراء -->
@@ -1268,7 +1283,6 @@
           <button type="button" class="active" data-mode="existing" id="buy-mode-existing">تزويد مخزون</button>
           <button type="button" data-mode="new" id="buy-mode-new">منتج جديد</button>
           <button type="button" data-mode="requests" id="buy-mode-requests">طلبات شراء</button>
-          <button type="button" data-mode="returns" id="buy-mode-returns">ترجيع مواد</button>
         </div>
         <div class="card">
           <form id="form-buy-existing">
@@ -2334,23 +2348,44 @@ document.getElementById('debts-table-body').addEventListener('click', (e)=>{
 });
 
 function openCustomerStatement(customerName){
-  const invoices = state.transactions.filter(t=> t.type==='sale' && t.paymentType==='credit' && t.customerName===customerName);
+  const allSales = state.transactions.filter(t=> t.type==='sale' && t.customerName===customerName);
   const payments = state.payments.filter(p=> p.customerName===customerName);
-  const phone = (invoices.find(t=>t.customerPhone) || {}).customerPhone || '';
+  const phone = (allSales.find(t=>t.customerPhone) || {}).customerPhone || '';
+
+  // group sale lines by invoice so multi-item invoices show as one movement
+  const invoiceGroups = {};
+  const invoiceOrder = [];
+  allSales.forEach(t=>{
+    const key = t.invoiceId || t.id;
+    if(!invoiceGroups[key]){
+      invoiceGroups[key] = { date:t.date, items:[t.productName], qty:t.qty, total:t.total, paymentType:t.paymentType };
+      invoiceOrder.push(key);
+    } else {
+      invoiceGroups[key].items.push(t.productName);
+      invoiceGroups[key].qty += t.qty;
+      invoiceGroups[key].total += t.total;
+    }
+  });
+  const invoices = invoiceOrder.map(k=>invoiceGroups[k]);
 
   const events = [
-    ...invoices.map(t=>({date:t.date, kind:'invoice', label:t.productName, qty:t.qty, amount:t.total})),
+    ...invoices.map(g=>({
+      date:g.date, kind:'invoice', isCredit: g.paymentType==='credit',
+      label: g.items.length===1 ? g.items[0] : `فاتورة (${g.items.length} مواد): ${g.items.join('، ')}`,
+      qty:g.qty, amount:g.total
+    })),
     ...payments.map(p=>({date:p.date, kind:'payment', label:'دفعة', amount:p.amount}))
   ].sort((a,b)=> new Date(a.date)-new Date(b.date));
 
   let balance = 0;
   const rows = events.map(ev=>{
-    balance += ev.kind==='invoice' ? ev.amount : -ev.amount;
+    const isInvoice = ev.kind==='invoice';
+    if(isInvoice && ev.isCredit) balance += ev.amount;
+    else if(!isInvoice) balance -= ev.amount;
     const d = new Date(ev.date);
     const dateStr = d.toLocaleDateString('ar-EG',{day:'numeric',month:'short',year:'numeric'});
-    const isInvoice = ev.kind==='invoice';
     const badge = isInvoice
-      ? `<span class="badge-type purchase">فاتورة</span>`
+      ? (ev.isCredit ? `<span class="badge-type purchase">فاتورة (أجل)</span>` : `<span class="badge-type sale">فاتورة (نقد)</span>`)
       : `<span class="badge-type sale">دفعة</span>`;
     const label = isInvoice ? `${escapeHtml(ev.label)} × ${ev.qty}` : 'تسديد دفعة';
     const amountStr = isInvoice ? money(ev.amount) : ('−'+money(ev.amount));
@@ -2365,9 +2400,10 @@ function openCustomerStatement(customerName){
       </tr>`;
   }).join('');
 
-  const totalInvoiced = invoices.reduce((s,t)=>s+t.total,0);
-  const totalPaid = payments.reduce((s,p)=>s+p.amount,0);
-  const currentBalance = totalInvoiced - totalPaid;
+  const totalInvoiced = invoices.reduce((s,g)=>s+g.total,0);
+  const totalPaidCash = invoices.filter(g=>g.paymentType!=='credit').reduce((s,g)=>s+g.total,0);
+  const totalPaid = totalPaidCash + payments.reduce((s,p)=>s+p.amount,0);
+  const currentBalance = invoices.filter(g=>g.paymentType==='credit').reduce((s,g)=>s+g.total,0) - payments.reduce((s,p)=>s+p.amount,0);
   const today = new Date().toLocaleDateString('ar-EG',{day:'numeric',month:'long',year:'numeric'});
 
   openModal(`
@@ -2380,15 +2416,15 @@ function openCustomerStatement(customerName){
 
     <div class="statement-summary">
       <div class="statement-summary-item">
-        <div class="label">إجمالي الفواتير</div>
+        <div class="label">إجمالي كل المبيعات (نقد + أجل)</div>
         <div class="value">${money(totalInvoiced)}</div>
       </div>
       <div class="statement-summary-item">
-        <div class="label">إجمالي المدفوع</div>
+        <div class="label">إجمالي المدفوع (نقد + دفعات)</div>
         <div class="value" style="color:var(--sage);">${money(totalPaid)}</div>
       </div>
       <div class="statement-summary-item highlight">
-        <div class="label">الرصيد الحالي</div>
+        <div class="label">الرصيد الحالي (الأجل غير المسدد)</div>
         <div class="value">${money(currentBalance)}</div>
       </div>
     </div>
@@ -2520,8 +2556,10 @@ function openAddProductModal(){
 }
 document.getElementById('open-add-product').addEventListener('click', openAddProductModal);
 
-function openModal(html){
-  document.getElementById('modal-box').innerHTML = html;
+function openModal(html, extraClass){
+  const box = document.getElementById('modal-box');
+  box.innerHTML = html;
+  box.className = 'modal-box' + (extraClass ? (' '+extraClass) : '');
   document.getElementById('modal-overlay').classList.add('show');
 }
 function closeModal(){
@@ -2906,6 +2944,18 @@ function updateSellTotals(){
   document.getElementById('sell-totals-toggle-value').textContent = money(total);
 }
 renderSellCart();
+
+document.getElementById('sell-mode-sell').addEventListener('click', ()=>setSellMode('sell'));
+document.getElementById('sell-mode-returns').addEventListener('click', ()=>setSellMode('returns'));
+function setSellMode(mode){
+  document.getElementById('sell-mode-sell').classList.toggle('active', mode==='sell');
+  document.getElementById('sell-mode-returns').classList.toggle('active', mode==='returns');
+  document.getElementById('sell-normal-mode').style.display = mode==='sell' ? '' : 'none';
+  document.getElementById('sell-returns-mode').style.display = mode==='returns' ? 'block' : 'none';
+  if(mode==='returns'){
+    renderReturnForm(document.getElementById('sell-returns-card'));
+  }
+}
 document.getElementById('sell-discount').addEventListener('input', updateSellTotals);
 formatNumberInput(document.getElementById('sell-discount'));
 document.getElementById('sell-totals-toggle').addEventListener('click', ()=>{
@@ -3041,23 +3091,28 @@ function showInvoice(inv){
   const dateStr = inv.date.toLocaleDateString('ar-EG',{day:'numeric',month:'long',year:'numeric'})+' · '+inv.date.toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'});
   const rows = inv.items.map((it,idx)=>`
     <tr>
-      <td class="cell-qty">${idx+1}</td>
-      <td class="cell-model" style="font-family:var(--font-num);">${it.code||'—'}</td>
-      <td class="cell-name">${escapeHtml(it.name)}${it.model?(' <span style="color:var(--ink-soft);font-weight:600;">- '+escapeHtml(it.model)+'</span>'):''}</td>
-      <td class="cell-qty">${it.qty}</td>
-      <td class="cell-model">قطعة</td>
-      <td class="cell-num">${money(it.unitPrice)}</td>
-      <td class="cell-num">${money(it.total)}</td>
+      <td class="cell-qty" style="padding:6px 4px;">${idx+1}</td>
+      <td class="cell-model" style="font-family:var(--font-num);padding:6px 4px;">${it.code||'—'}</td>
+      <td class="cell-name" style="padding:6px 4px;">${escapeHtml(it.name)}${it.model?(' <span style="color:var(--ink-soft);font-weight:600;">- '+escapeHtml(it.model)+'</span>'):''}</td>
+      <td class="cell-qty" style="padding:6px 4px;">${it.qty}</td>
+      <td class="cell-model" style="padding:6px 4px;">قطعة</td>
+      <td class="cell-num" style="padding:6px 4px;">${fmt(it.unitPrice)}</td>
+      <td class="cell-num" style="padding:6px 4px;">${fmt(it.total)}</td>
     </tr>`).join('');
   openModal(`
     <div class="modal-title">فاتورة بيع — باور فون</div>
     <div class="modal-text">${dateStr}${inv.customerName?(' · الزبون: '+escapeHtml(inv.customerName)):''}${inv.customerPhone?(' · '+escapeHtml(inv.customerPhone)):''}</div>
-    <div class="table-wrap" style="display:block;margin-bottom:12px;overflow-x:auto;">
-      <table class="data-table">
-        <thead><tr><th>#</th><th>رمز المادة</th><th>اسم المادة</th><th>الكمية</th><th>الوحدة</th><th>السعر الافرادي</th><th>السعر الاجمالي</th></tr></thead>
+    <div class="table-wrap" style="display:block;margin-bottom:4px;">
+      <table class="data-table" style="font-size:10.5px;table-layout:fixed;width:100%;">
+        <colgroup>
+          <col style="width:6%;"><col style="width:11%;"><col style="width:29%;">
+          <col style="width:9%;"><col style="width:11%;"><col style="width:17%;"><col style="width:17%;">
+        </colgroup>
+        <thead><tr><th style="padding:6px 4px;">#</th><th style="padding:6px 4px;">رمز</th><th style="padding:6px 4px;">اسم المادة</th><th style="padding:6px 4px;">كمية</th><th style="padding:6px 4px;">وحدة</th><th style="padding:6px 4px;">افرادي</th><th style="padding:6px 4px;">اجمالي</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
+    <div class="modal-text" style="margin:0 0 10px;font-size:10.5px;">الأسعار بالجدول بالـ${escapeHtml(state.settings.currency)} (بدون رمز العملة لضيق المساحة)</div>
     <div class="txn-row" style="padding:0 0 10px;">
       <span class="txn-name" style="font-weight:900;">الإجمالي الكلي</span>
       <span class="txn-num profit" style="font-size:16px;">${money(inv.total)}</span>
@@ -3069,7 +3124,7 @@ function showInvoice(inv){
       <button class="btn btn-primary" id="invoice-print">طباعة الفاتورة</button>
       <button class="btn btn-ghost" id="modal-cancel">إغلاق</button>
     </div>
-  `);
+  `, 'wide');
   document.getElementById('modal-cancel').onclick = closeModal;
   document.getElementById('invoice-print').onclick = ()=> window.print();
   document.getElementById('invoice-whatsapp').onclick = ()=>{
@@ -3085,13 +3140,11 @@ let buyMode = 'existing';
 document.getElementById('buy-mode-existing').addEventListener('click', ()=>setBuyMode('existing'));
 document.getElementById('buy-mode-new').addEventListener('click', ()=>setBuyMode('new'));
 document.getElementById('buy-mode-requests').addEventListener('click', ()=>setBuyMode('requests'));
-document.getElementById('buy-mode-returns').addEventListener('click', ()=>setBuyMode('returns'));
 function setBuyMode(mode){
   buyMode = mode;
   document.getElementById('buy-mode-existing').classList.toggle('active', mode==='existing');
   document.getElementById('buy-mode-new').classList.toggle('active', mode==='new');
   document.getElementById('buy-mode-requests').classList.toggle('active', mode==='requests');
-  document.getElementById('buy-mode-returns').classList.toggle('active', mode==='returns');
   renderBuyForm();
 }
 
@@ -3179,8 +3232,6 @@ function renderBuyForm(){
     formatNumberInput(document.getElementById('bn-sell'));
   } else if(buyMode==='requests'){
     renderPurchaseRequests(card);
-  } else if(buyMode==='returns'){
-    renderReturnForm(card);
   }
 }
 
