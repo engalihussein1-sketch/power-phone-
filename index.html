@@ -1903,19 +1903,51 @@ function renderReports(){
     }
   });
 
-  const saleItemsLabel = g => g.items.length===1
-    ? g.items[0].productName
-    : `فاتورة (${g.items.length} مواد): ${g.items.map(i=>i.productName).join('، ')}`;
-
   list.innerHTML = groups.map(t=>{
     const d = new Date(t.date);
     const dateStr = d.toLocaleDateString('ar-EG',{day:'numeric',month:'short'})+' · '+d.toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'});
+    if(t.isSale && t.items.length>1){
+      const itemsHtml = t.items.map(i=>`
+        <tr>
+          <td class="cell-name" style="padding:5px 4px;">${escapeHtml(i.productName)}</td>
+          <td class="cell-qty" style="padding:5px 4px;">${i.qty}</td>
+          <td class="cell-num" style="padding:5px 4px;">${money(i.unitPrice)}</td>
+          <td class="cell-num" style="padding:5px 4px;">${money(i.qty*i.unitPrice)}</td>
+        </tr>`).join('');
+      return `<div class="cart-item-card">
+        <div class="cart-item-head" style="justify-content:space-between;">
+          <div>
+            <span class="txn-badge sale">بيع</span>
+            <span class="cart-item-code" style="margin-right:6px;">فاتورة — ${t.items.length} مواد</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <button class="row-icon-btn reprint-invoice" data-invoice="${t.invoiceId}" title="طباعة الفاتورة"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/></svg></button>
+            <button class="row-icon-btn danger delete-invoice" data-invoice="${t.invoiceId}" title="حذف الفاتورة"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+          </div>
+        </div>
+        <div class="txn-meta" style="margin-bottom:6px;">${dateStr}${t.customerName?(' · الزبون: '+escapeHtml(t.customerName)):''}</div>
+        <div style="border-top:1.5px dashed var(--line-soft);">
+          <table class="data-table" style="font-size:11px;table-layout:fixed;width:100%;">
+            <colgroup><col style="width:36%;"><col style="width:12%;"><col style="width:26%;"><col style="width:26%;"></colgroup>
+            <thead><tr><th style="padding:5px 4px;">المادة</th><th style="padding:5px 4px;">ك</th><th style="padding:5px 4px;">السعر</th><th style="padding:5px 4px;">المجموع</th></tr></thead>
+            <tbody>${itemsHtml}</tbody>
+          </table>
+        </div>
+        <div class="txn-row" style="border-top:2px dashed var(--line-soft);padding-top:8px;margin-top:2px;">
+          <span class="txn-name" style="font-weight:900;">الإجمالي (${t.qtyTotal} قطعة)</span>
+          <div style="text-align:left;">
+            <div class="txn-num">${money(t.total)}</div>
+            <div class="txn-num profit">+${money(t.profit)}</div>
+          </div>
+        </div>
+      </div>`;
+    }
     if(t.isSale){
-      const qtyMeta = t.items.length===1 ? `${t.items[0].qty} × ${money(t.items[0].unitPrice)} · ` : `${t.qtyTotal} قطعة إجمالًا · `;
+      const qtyMeta = `${t.items[0].qty} × ${money(t.items[0].unitPrice)} · `;
       return `<div class="txn-row">
         <div>
           <span class="txn-badge sale">بيع</span>
-          <div class="txn-name">${escapeHtml(saleItemsLabel(t))}</div>
+          <div class="txn-name">${escapeHtml(t.items[0].productName)}</div>
           <div class="txn-meta">${qtyMeta}${dateStr}${t.customerName?(' · الزبون: '+escapeHtml(t.customerName)):''}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
@@ -1923,7 +1955,7 @@ function renderReports(){
             <div class="txn-num">${money(t.total)}</div>
             <div class="txn-num profit">+${money(t.profit)}</div>
           </div>
-          ${t.items.length===1 ? `<button class="row-icon-btn edit-txn" data-id="${t.items[0].id}" title="تعديل"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>` : ''}
+          <button class="row-icon-btn edit-txn" data-id="${t.items[0].id}" title="تعديل"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
           <button class="row-icon-btn reprint-invoice" data-invoice="${t.invoiceId}" title="طباعة الفاتورة"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/></svg></button>
           <button class="row-icon-btn danger delete-invoice" data-invoice="${t.invoiceId}" title="حذف الفاتورة"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
         </div>
@@ -1962,7 +1994,8 @@ function renderReports(){
     const d = new Date(t.date);
     const dateStr = d.toLocaleDateString('ar-EG',{day:'numeric',month:'short'})+' · '+d.toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'});
     if(t.isSale){
-      const nameCell = `${escapeHtml(saleItemsLabel(t))}${t.customerName?('<br><span style="color:var(--ink-soft);font-size:11.5px;">الزبون: '+escapeHtml(t.customerName)+'</span>'):''}`;
+      const itemsLabel = t.items.length===1 ? t.items[0].productName : `فاتورة (${t.items.length} مواد): ${t.items.map(i=>i.productName).join('، ')}`;
+      const nameCell = `${escapeHtml(itemsLabel)}${t.customerName?('<br><span style="color:var(--ink-soft);font-size:11.5px;">الزبون: '+escapeHtml(t.customerName)+'</span>'):''}`;
       const qtyCell = t.items.length===1 ? t.items[0].qty : t.qtyTotal;
       const priceCell = t.items.length===1 ? money(t.items[0].unitPrice) : '—';
       return `
