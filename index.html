@@ -2235,7 +2235,7 @@ function renderDebts(){
 
   const list = document.getElementById('debts-list');
   const tableBody = document.getElementById('debts-table-body');
-  const sorted = [...debts].sort((a,b)=> new Date(b.date)-new Date(a.date));
+  const sorted = [...debts].sort((a,b)=> new Date(b.lastPaymentDate||b.date)-new Date(a.lastPaymentDate||a.date));
 
   if(sorted.length===0){
     list.innerHTML = `<div class="empty-state"><div class="big">ما في ديون مستحقة</div><div class="small">البيع بالأجل بيطلع هون لحد ما يتسدد</div></div>`;
@@ -2244,15 +2244,16 @@ function renderDebts(){
   }
 
   list.innerHTML = sorted.map(t=>{
-    const d = new Date(t.date);
+    const d = new Date(t.lastPaymentDate || t.date);
     const dateStr = d.toLocaleDateString('ar-EG',{day:'numeric',month:'short'});
+    const dateLabel = t.lastPaymentDate ? 'آخر دفعة: ' : '';
     return `
     <div class="card">
       <div class="txn-row">
         <div>
           <span class="txn-badge purchase">${escapeHtml(t.customerName||'بدون اسم')}</span>
           <div class="txn-name">${escapeHtml(t.productName)}${t.customerPhone?(' · '+escapeHtml(t.customerPhone)):''}</div>
-          <div class="txn-meta">${t.qty} × ${money(t.unitPrice)} · ${dateStr}</div>
+          <div class="txn-meta">${t.qty} × ${money(t.unitPrice)} · ${dateLabel}${dateStr}</div>
         </div>
         <div>
           <div class="txn-num">${money(t.remaining)}</div>
@@ -2268,7 +2269,7 @@ function renderDebts(){
   }).join('');
 
   tableBody.innerHTML = sorted.map(t=>{
-    const d = new Date(t.date);
+    const d = new Date(t.lastPaymentDate || t.date);
     const dateStr = d.toLocaleDateString('ar-EG',{day:'numeric',month:'short'});
     return `
     <tr>
@@ -2278,7 +2279,7 @@ function renderDebts(){
       <td class="cell-num">${money(t.total)}</td>
       <td class="cell-num">${money(t.paid)}</td>
       <td class="cell-num">${money(t.remaining)}</td>
-      <td class="cell-model">${dateStr}</td>
+      <td class="cell-model">${t.lastPaymentDate ? 'آخر دفعة ' : ''}${dateStr}</td>
       <td>
         <div class="row-icons">
           <button class="row-icon-btn settle-debt" data-id="${t.id}" title="تسديد دفعة">
@@ -2327,6 +2328,7 @@ async function handleSettleDebt(id){
   t.paid = +(t.paid + applied).toFixed(2);
   t.remaining = +(t.remaining - applied).toFixed(2);
   if(t.remaining < 0.01) t.remaining = 0;
+  t.lastPaymentDate = todayISO();
   state.payments.push({
     id: uid(), transactionId: t.id, customerName: t.customerName||'',
     customerPhone: t.customerPhone||'', amount: applied, date: todayISO()
