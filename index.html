@@ -3231,17 +3231,23 @@ function toWhatsAppNumber(phone){
 
 function buildInvoiceText(inv){
   const dateStr = inv.date.toLocaleDateString('ar-EG',{day:'numeric',month:'long',year:'numeric'});
+  const divider = '▬▬▬▬▬▬▬▬▬▬▬▬';
   const lines = [];
-  lines.push('🧾 فاتورة بيع — باور فون');
-  lines.push(dateStr);
-  if(inv.customerName) lines.push('الزبون: '+inv.customerName);
-  lines.push('');
-  inv.items.forEach(it=>{
-    lines.push(`${it.name}${it.model?(' - '+it.model):''} × ${it.qty} = ${money(it.total)}`);
+  lines.push('🧾 *فاتورة بيع*');
+  lines.push('🏪 *باور فون*');
+  lines.push(`📅 ${dateStr}`);
+  if(inv.customerName) lines.push(`👤 الزبون: ${inv.customerName}`);
+  lines.push(divider);
+  inv.items.forEach((it,idx)=>{
+    lines.push(`${idx+1}. ${it.name}${it.model?(' - '+it.model):''}`);
+    lines.push(`    ${it.qty} × ${money(it.unitPrice)}  =  *${money(it.total)}*`);
   });
+  lines.push(divider);
+  if(inv.discount>0) lines.push(`🏷️ خصم: ${money(inv.discount)}`);
+  lines.push(`💰 *الإجمالي: ${money(inv.total)}*`);
+  if(inv.paymentType==='credit') lines.push('⚠️ _بيع بالأجل — غير مسدد بعد_');
   lines.push('');
-  lines.push(`الإجمالي: ${money(inv.total)}`);
-  if(inv.paymentType==='credit') lines.push('⚠️ بيع بالأجل — غير مسدد بعد');
+  lines.push('🙏 شكرًا لتعاملكم معنا');
   return lines.join('\n');
 }
 
