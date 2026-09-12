@@ -723,6 +723,47 @@
   #real-app{display:block;}
   #login-screen.hidden{display:none;}
   body.role-employee .delete-product{display:none !important;}
+  .bar-chart{
+    display:flex;
+    align-items:flex-end;
+    gap:6px;
+    height:150px;
+    padding:4px 2px 0;
+    overflow-x:auto;
+  }
+  .bar-chart-col{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:flex-end;
+    flex:1;
+    min-width:22px;
+    height:100%;
+    gap:4px;
+  }
+  .bar-chart-bar{
+    width:100%;
+    max-width:26px;
+    background:var(--brass);
+    border-radius:5px 5px 2px 2px;
+    border:1.5px solid var(--ink);
+    min-height:2px;
+    transition:height .2s;
+  }
+  .bar-chart-bar.today{background:var(--sage);}
+  .bar-chart-val{
+    font-family:var(--font-num);
+    font-size:8.5px;
+    font-weight:800;
+    color:var(--ink-soft);
+    white-space:nowrap;
+  }
+  .bar-chart-label{
+    font-size:9px;
+    color:var(--ink-soft);
+    font-weight:700;
+    white-space:nowrap;
+  }
   .table-wrap{display:none;}
   .cart-wrap{
     overflow-x:auto;
@@ -1369,6 +1410,16 @@
               <span class="txn-num" id="rep-purchases">0</span>
             </div>
           </div>
+          <div class="card" style="margin-top:8px;">
+            <div class="txn-row" style="margin-bottom:8px;">
+              <span class="txn-name" style="font-weight:900;">المبيعات اليومية</span>
+              <div class="toggle-group" id="sales-chart-range" style="margin-bottom:0;width:auto;">
+                <button type="button" class="active" data-days="7">7 أيام</button>
+                <button type="button" data-days="30">30 يوم</button>
+              </div>
+            </div>
+            <div id="sales-bar-chart"></div>
+          </div>
           <h2 class="section-title" style="margin-top:12px;"><span>سجل العمليات</span></h2>
           <div class="card" id="txn-list-card">
             <div id="txn-list"></div>
@@ -1626,6 +1677,18 @@ function parseNum(str){
 function formatNumberInput(el){
   if(!el || el.dataset.numFormatted) return;
   el.dataset.numFormatted = '1';
+  el.addEventListener('input', ()=>{
+    const cursorFromEnd = el.value.length - el.selectionStart;
+    const raw = el.value.replace(/[^\d.]/g,'');
+    if(raw===''){ return; }
+    const parts = raw.split('.');
+    let intPart = parts[0].replace(/^0+(?=\d)/,'');
+    let formatted = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    if(parts.length>1) formatted += '.' + parts[1].slice(0,2);
+    el.value = formatted;
+    const newPos = Math.max(0, el.value.length - cursorFromEnd);
+    el.setSelectionRange(newPos, newPos);
+  });
   el.addEventListener('blur', ()=>{
     const num = parseNum(el.value);
     if(!isNaN(num) && el.value.trim()!==''){ el.value = fmt(num); }
@@ -1897,6 +1960,47 @@ function filterByCategory(transactions){
   if(currentReportCategory==='الكل') return transactions;
   return transactions.filter(t => (t.category||'شاشة') === currentReportCategory);
 }
+function renderSalesBarChart(days){
+  days = days || 7;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const buckets = [];
+  for(let i=days-1;i>=0;i--){
+    const d = new Date(today); d.setDate(d.getDate()-i);
+    buckets.push({ date:d, key:d.toISOString().slice(0,10), total:0 });
+  }
+  const byKey = {};
+  buckets.forEach(b=>{ byKey[b.key]=b; });
+  state.transactions.filter(t=>t.type==='sale').forEach(t=>{
+    const key = (t.date||'').slice(0,10);
+    if(byKey[key]) byKey[key].total += t.total;
+  });
+  const max = Math.max(...buckets.map(b=>b.total), 1);
+  const container = document.getElementById('sales-bar-chart');
+  if(!container) return;
+  container.innerHTML = `<div class="bar-chart">${buckets.map(b=>{
+    const h = Math.round((b.total/max)*118) + 2;
+    const isToday = b.key === today.toISOString().slice(0,10);
+    const label = days<=7
+      ? b.date.toLocaleDateString('ar-EG',{weekday:'short'})
+      : b.date.getDate();
+    return `
+      <div class="bar-chart-col" title="${b.date.toLocaleDateString('ar-EG',{day:'numeric',month:'short'})}: ${money(b.total)}">
+        <span class="bar-chart-val">${b.total>0 ? fmt(b.total) : ''}</span>
+        <div class="bar-chart-bar ${isToday?'today':''}" style="height:${h}px;"></div>
+        <span class="bar-chart-label">${label}</span>
+      </div>`;
+  }).join('')}</div>`;
+}
+let salesChartDays = 7;
+document.getElementById('sales-chart-range').addEventListener('click', (e)=>{
+  const btn = e.target.closest('button');
+  if(!btn) return;
+  document.querySelectorAll('#sales-chart-range button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  salesChartDays = +btn.dataset.days;
+  renderSalesBarChart(salesChartDays);
+});
+
 function renderReports(){
   const filtered = filterByCategory(filterByRange(state.transactions, currentReportRange));
   const totals = computeTotals(filtered);
@@ -1904,6 +2008,7 @@ function renderReports(){
   document.getElementById('rep-cogs').textContent = money(totals.cogs);
   document.getElementById('rep-profit').textContent = money(totals.profit);
   document.getElementById('rep-purchases').textContent = money(totals.purchases);
+  renderSalesBarChart(salesChartDays);
 
   const list = document.getElementById('txn-list');
   const tableBody = document.getElementById('txn-table-body');
@@ -3672,11 +3777,18 @@ function renderInventoryReport(){
   const topSellingEl = document.getElementById('inv-top-selling');
   topSellingEl.innerHTML = soldList.length===0
     ? `<div class="empty-state"><div class="small">${term ? 'ما في نتائج مطابقة' : 'ما في منتجات بعد'}</div></div>`
-    : soldList.map(x=>`
-      <div class="txn-row">
-        <span class="txn-name">${escapeHtml(x.product.name)}${x.product.model?(' <span style="color:var(--ink-soft);font-weight:600;">- '+escapeHtml(x.product.model)+'</span>'):''}</span>
-        <span class="txn-num">${x.qty} قطعة مباعة</span>
-      </div>`).join('');
+    : soldList.map(x=>{
+        const originalTotal = x.product.qty + x.qty;
+        return `
+      <div class="txn-row" style="align-items:flex-start;flex-wrap:wrap;gap:6px;">
+        <span class="txn-name" style="flex:1 1 100%;">${escapeHtml(x.product.name)}${x.product.model?(' <span style="color:var(--ink-soft);font-weight:600;">- '+escapeHtml(x.product.model)+'</span>'):''}</span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;width:100%;margin-top:2px;">
+          <span class="status-pill" style="background:var(--blue-soft);color:var(--blue);">كان عندك ${originalTotal}</span>
+          <span class="status-pill status-low">انباع ${x.qty}</span>
+          <span class="status-pill status-ok">متبقي ${x.product.qty}</span>
+        </div>
+      </div>`;
+      }).join('');
 
   const lowStockEl = document.getElementById('inv-low-stock');
   lowStockEl.innerHTML = lowStock.length===0
