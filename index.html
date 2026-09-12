@@ -1669,6 +1669,48 @@ function getProductCode(p){
 }
 function fmt(n){ return (Math.round((n+Number.EPSILON)*100)/100).toLocaleString('en-US'); }
 function money(n){ return fmt(n)+' '+state.settings.currency; }
+
+function numberToArabicWords(num){
+  num = Math.round(num||0);
+  if(num===0) return 'صفر';
+  const ones=['','واحد','اثنان','ثلاثة','أربعة','خمسة','ستة','سبعة','ثمانية','تسعة'];
+  const onesFem=['','واحدة','اثنتان','ثلاث','أربع','خمس','ست','سبع','ثمان','تسع'];
+  const teens=['عشرة','أحد عشر','اثنا عشر','ثلاثة عشر','أربعة عشر','خمسة عشر','ستة عشر','سبعة عشر','ثمانية عشر','تسعة عشر'];
+  const tens=['','عشرة','عشرون','ثلاثون','أربعون','خمسون','ستون','سبعون','ثمانون','تسعون'];
+  const hundreds=['','مئة','مئتان','ثلاثمئة','أربعمئة','خمسمئة','ستمئة','سبعمئة','ثمانمئة','تسعمئة'];
+  function threeDigits(n, fem){
+    const parts=[];
+    const h = Math.floor(n/100), r = n%100;
+    if(h>0) parts.push(hundreds[h]);
+    if(r>0){
+      if(r<10) parts.push(fem?onesFem[r]:ones[r]);
+      else if(r<20) parts.push(teens[r-10]);
+      else {
+        const t=Math.floor(r/10), o=r%10;
+        parts.push(o===0 ? tens[t] : ((fem?onesFem[o]:ones[o])+' و'+tens[t]));
+      }
+    }
+    return parts.join(' و');
+  }
+  const million = Math.floor(num/1000000);
+  const thousand = Math.floor((num%1000000)/1000);
+  const rest = num%1000;
+  const parts=[];
+  if(million>0){
+    if(million===1) parts.push('مليون');
+    else if(million===2) parts.push('مليونان');
+    else if(million<=10) parts.push(threeDigits(million,false)+' ملايين');
+    else parts.push(threeDigits(million,false)+' مليون');
+  }
+  if(thousand>0){
+    if(thousand===1) parts.push('ألف');
+    else if(thousand===2) parts.push('ألفان');
+    else if(thousand<=10) parts.push(threeDigits(thousand,true)+' آلاف');
+    else parts.push(threeDigits(thousand,false)+' ألف');
+  }
+  if(rest>0) parts.push(threeDigits(rest,false));
+  return parts.join(' و');
+}
 function todayISO(){ return new Date().toISOString(); }
 
 function parseNum(str){
@@ -2327,10 +2369,19 @@ function reprintInvoice(invoiceId){
     return {name:t.productName, model:'', code: p?getProductCode(p):'—', qty:t.qty, unitPrice:t.unitPrice, total:t.total, note:t.note||''};
   });
   const total = lines.reduce((s,t)=>s+t.total,0);
+  const paid = lines.reduce((s,t)=>s+t.paid,0);
+  const remaining = lines.reduce((s,t)=>s+t.remaining,0);
   const first = lines[0];
+  let prevBalance = 0;
+  if(first.customerName){
+    prevBalance = state.transactions
+      .filter(t=> t.type==='sale' && t.paymentType==='credit' && t.customerName===first.customerName && t.invoiceId!==invoiceId)
+      .reduce((s,t)=>s+t.remaining, 0);
+  }
   showInvoice({
     items, total, customerName:first.customerName, customerPhone:first.customerPhone,
-    paymentType:first.paymentType, date:new Date(first.date)
+    paymentType:first.paymentType, date:new Date(first.date),
+    paid, remaining, prevBalance, currentBalance: prevBalance + remaining
   });
 }
 
@@ -3218,7 +3269,20 @@ document.getElementById('sell-finalize').addEventListener('click', async ()=>{
   document.getElementById('sell-totals-toggle').classList.remove('open');
   renderSellCart();
   renderAll();
-  showInvoice({ items: invoiceItems, total: invoiceTotal, discount, customerName, customerPhone, paymentType: wasCredit?'credit':'cash', date: new Date() });
+  const paidAmount = wasCredit ? 0 : invoiceTotal;
+  const remainingAmount = wasCredit ? invoiceTotal : 0;
+  let prevBalance = 0;
+  if(customerName){
+    prevBalance = state.transactions
+      .filter(t=> t.type==='sale' && t.paymentType==='credit' && t.customerName===customerName && t.invoiceId!==invoiceId)
+      .reduce((s,t)=>s+t.remaining, 0);
+  }
+  showInvoice({
+    items: invoiceItems, total: invoiceTotal, discount, customerName, customerPhone,
+    paymentType: wasCredit?'credit':'cash', date: new Date(),
+    paid: paidAmount, remaining: remainingAmount,
+    prevBalance, currentBalance: prevBalance + remainingAmount
+  });
 });
 
 function toWhatsAppNumber(phone){
@@ -3282,7 +3346,18 @@ function showInvoice(inv){
       <span class="txn-num profit" style="font-size:16px;">${money(inv.total)}</span>
     </div>
     ${inv.discount>0 ? `<div class="modal-text" style="margin-top:-6px;">شامل خصم: ${money(inv.discount)}</div>` : ''}
+    <div class="modal-text" style="margin-bottom:10px;background:var(--bg);border:1.5px dashed var(--line);border-radius:8px;padding:8px 10px;">
+      <b>المبلغ كتابة:</b> ${numberToArabicWords(inv.total)} ${escapeHtml(state.settings.currency==='د.ع'?'دينار عراقي':state.settings.currency)} لا غير
+    </div>
+    ${(inv.paid!==undefined) ? `
+    <div class="stat-grid" style="grid-template-columns:repeat(2,1fr);margin-bottom:10px;">
+      <div class="stat-box"><div class="label">دفعة</div><div class="value">${money(inv.paid)}</div></div>
+      <div class="stat-box ${inv.remaining>0?'highlight':''}"><div class="label">باقي للدفع</div><div class="value">${money(inv.remaining)}</div></div>
+      <div class="stat-box"><div class="label">رصيد سابق</div><div class="value">${money(inv.prevBalance||0)}</div></div>
+      <div class="stat-box ${inv.currentBalance>0?'highlight':''}"><div class="label">رصيد حالي</div><div class="value">${money(inv.currentBalance||0)}</div></div>
+    </div>` : ''}
     ${inv.paymentType==='credit' ? `<div class="modal-text" style="color:var(--rust);font-weight:700;">بيع بالأجل — غير مسدد بعد</div>` : ''}
+    <div style="border:1.5px solid var(--ink);border-radius:8px;padding:16px 8px;text-align:center;margin:10px 0 6px;font-weight:800;color:var(--ink-soft);font-size:11px;">الختم والتوقيع</div>
     <div class="modal-actions" style="flex-direction:column;">
       <button class="btn" style="background:#25D366;color:#fff;" id="invoice-whatsapp">إرسال عبر واتساب</button>
       <button class="btn btn-primary" id="invoice-print">طباعة الفاتورة</button>
