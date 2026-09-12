@@ -721,6 +721,8 @@
   }
   #real-app.hidden{display:none;}
   #real-app{display:block;}
+  #login-screen.hidden{display:none;}
+  body.role-employee .delete-product{display:none !important;}
   .table-wrap{display:none;}
   .cart-wrap{
     overflow-x:auto;
@@ -1137,6 +1139,15 @@
 <body>
 <div id="app">
   <div id="loading" class="loading">جارِ التحميل...</div>
+  <div id="login-screen" class="hidden" style="display:none;min-height:100vh;flex-direction:column;align-items:center;justify-content:center;padding:24px;gap:14px;text-align:center;">
+    <div class="brand-mark" style="width:56px;height:56px;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:28px;height:28px;color:var(--brass);"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M12.5 8.5L10 13h3l-2.5 4.5"/></svg>
+    </div>
+    <div style="font-size:20px;font-weight:900;">باور فون</div>
+    <div class="page-subtitle" style="margin-bottom:8px;">اختر نوع الدخول</div>
+    <button type="button" class="btn btn-primary" id="login-owner-btn" style="max-width:280px;">دخول كمالك</button>
+    <button type="button" class="btn btn-ghost" id="login-employee-btn" style="max-width:280px;border:2.5px solid var(--ink);">دخول كموظف</button>
+  </div>
   <div id="real-app" class="hidden">
     <header class="top">
       <div class="row-top">
@@ -1156,6 +1167,9 @@
           </button>
           <button class="icon-btn" id="backup-btn" title="نسخة احتياطية">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+          </button>
+          <button class="icon-btn" id="switch-user-btn" title="تبديل المستخدم">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/><path d="M13 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8"/></svg>
           </button>
         </div>
       </div>
@@ -1781,6 +1795,7 @@ function renderInventory(){
           <div class="model">${escapeHtml(p.model||'')}</div>
           <div class="prices">شراء ${money(p.buyPrice)} · بيع ${money(p.sellPrice)}</div>
           <div class="item-total-line">المجموع: ${p.qty} × ${money(p.sellPrice)} = ${money(p.qty*p.sellPrice)}</div>
+          ${p.defectiveQty>0 ? `<div class="item-total-line" style="color:var(--rust);">⚠ ${p.defectiveQty} قطعة معطلة (غير معروضة للبيع)</div>` : ''}
         </div>
         <span class="qty-badge ${p.qty<=2?'low':''}">${p.qty} قطعة</span>
       </div>
@@ -1808,7 +1823,7 @@ function renderInventory(){
       <td class="cell-model">${escapeHtml(p.category||'شاشة')}</td>
       <td class="cell-model">${escapeHtml(p.model||'')}</td>
       <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
-      <td class="cell-qty">${p.qty}</td>
+      <td class="cell-qty">${p.qty}${p.defectiveQty>0 ? `<br><span style="color:var(--rust);font-size:10px;font-weight:800;">+${p.defectiveQty} معطلة</span>` : ''}</td>
       <td class="cell-num">${money(p.buyPrice)}</td>
       <td class="cell-num">${money(p.sellPrice)}</td>
       <td class="cell-num">${money(p.qty*p.buyPrice)}</td>
@@ -1978,7 +1993,7 @@ function renderReports(){
     } else if(t.type==='return'){
       return `<div class="txn-row">
         <div>
-          <span class="txn-badge" style="background:var(--rust-soft);color:var(--rust);">ترجيع</span>
+          <span class="txn-badge" style="background:var(--rust-soft);color:var(--rust);">ترجيع${t.isDefective?' — معطلة':''}</span>
           <div class="txn-name">${escapeHtml(t.productName)}</div>
           <div class="txn-meta">${t.qty} × ${money(t.unitPrice)} · ${dateStr}${t.reason?(' · '+escapeHtml(t.reason)):''}</div>
         </div>
@@ -2131,7 +2146,11 @@ async function handleDeleteTransaction(id){
   if(!ok) return;
   const p = state.products.find(pr=>pr.id===t.productId);
   if(p){
-    if(t.type==='purchase' || t.type==='return') p.qty -= t.qty;
+    if(t.type==='purchase') p.qty -= t.qty;
+    else if(t.type==='return'){
+      if(t.isDefective){ p.defectiveQty = Math.max(0, (p.defectiveQty||0) - t.qty); }
+      else p.qty -= t.qty;
+    }
     else p.qty += t.qty;
     if(p.qty<0) p.qty = 0;
   }
@@ -2716,6 +2735,7 @@ function openBackupModal(){
       <button class="btn btn-primary" id="btn-export-xlsx">تصدير Excel (xlsx)</button>
       <button class="btn btn-ghost" id="btn-export">نسخة احتياطية (للاستعادة لاحقًا)</button>
       <button class="btn btn-ghost" id="btn-import">استيراد نسخة احتياطية</button>
+      <button class="btn btn-ghost" id="btn-change-pin">تغيير رمز دخول المالك</button>
     </div>
     <input type="file" id="import-file-input" accept="application/json" style="display:none;">
   `);
@@ -2723,6 +2743,13 @@ function openBackupModal(){
   document.getElementById('btn-export').onclick = exportBackup;
   document.getElementById('btn-import').onclick = ()=> document.getElementById('import-file-input').click();
   document.getElementById('import-file-input').addEventListener('change', handleImportFile);
+  document.getElementById('btn-change-pin').onclick = async ()=>{
+    const newPin = await changeOwnerPinModal();
+    if(!newPin) return;
+    state.settings.ownerPin = newPin;
+    await saveData();
+    showToast('تم تغيير رمز المالك');
+  };
 }
 document.getElementById('backup-btn').addEventListener('click', openBackupModal);
 
@@ -3278,13 +3305,21 @@ function renderReturnForm(card){
       </div>
     </div>
     <div class="field">
+      <label>حالة القطعة المرجعة</label>
+      <div class="toggle-group" id="return-condition-toggle">
+        <button type="button" class="active" data-condition="good">سليمة (ترجع للبيع)</button>
+        <button type="button" data-condition="defective">معطلة (ما تنباع)</button>
+      </div>
+    </div>
+    <div class="field">
       <label>سبب الترجيع (اختياري)</label>
       <input type="text" id="return-reason" placeholder="عطل، غير مناسب، إلخ...">
     </div>
     <button type="button" class="btn btn-primary" id="return-submit" style="width:100%;">+ تسجيل الترجيع</button>
-    <div class="modal-text" style="margin-top:10px;margin-bottom:0;">الترجيع بيرجّع القطعة للمخزون، وينحسم مبلغها من إجمالي المبيعات والربح تلقائيًا.</div>
+    <div class="modal-text" style="margin-top:10px;margin-bottom:0;" id="return-help-text">القطعة السليمة ترجع للمخزون القابل للبيع. القطعة المعطلة تنحسب بسجل منفصل ولا تدخل كمية المتوفر للبيع، ومبلغها ينحسم من إجمالي المبيعات والربح تلقائيًا بالحالتين.</div>
   `;
   let returnSelectedCategory = 'الكل';
+  let returnCondition = 'good';
   document.getElementById('return-category-filters').addEventListener('click', (e)=>{
     const btn = e.target.closest('button');
     if(!btn) return;
@@ -3293,6 +3328,13 @@ function renderReturnForm(card){
     returnSelectedCategory = btn.dataset.cat;
     document.getElementById('return-product-input').value='';
     document.getElementById('return-product').value='';
+  });
+  document.getElementById('return-condition-toggle').addEventListener('click', (e)=>{
+    const btn = e.target.closest('button');
+    if(!btn) return;
+    document.querySelectorAll('#return-condition-toggle button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    returnCondition = btn.dataset.condition;
   });
   setupProductPicker({
     inputId:'return-product-input', hiddenId:'return-product', resultsId:'return-product-results',
@@ -3309,12 +3351,17 @@ function renderReturnForm(card){
     const reason = document.getElementById('return-reason').value.trim();
     if(isNaN(qty) || qty<1){ showToast('اكتب كمية صحيحة'); return; }
     if(isNaN(price) || price<0){ showToast('اكتب مبلغ استرجاع صحيح'); return; }
-    p.qty += qty;
+    const isDefective = returnCondition==='defective';
+    if(isDefective){
+      p.defectiveQty = (p.defectiveQty||0) + qty;
+    } else {
+      p.qty += qty;
+    }
     const total = +(qty*price).toFixed(2);
     const totalCost = +(qty*p.buyPrice).toFixed(2);
     state.transactions.push({
       id: uid(), type:'return', productId:p.id, productName:p.name, category:(p.category||'شاشة'),
-      qty, unitPrice:price, total, unitCost:p.buyPrice, totalCost,
+      qty, unitPrice:price, total, unitCost:p.buyPrice, totalCost, isDefective,
       profit: -(total-totalCost), date: todayISO(), reason
     });
     await saveData();
@@ -3324,7 +3371,7 @@ function renderReturnForm(card){
     document.getElementById('return-product-input').value='';
     document.getElementById('return-product').value='';
     renderAll();
-    showToast('تم تسجيل الترجيع وتحديث المخزون');
+    showToast(isDefective ? 'تم تسجيل الترجيع كقطعة معطلة (ما انضافت للمتوفر للبيع)' : 'تم تسجيل الترجيع وتحديث المخزون');
   });
 }
 
@@ -3670,15 +3717,110 @@ function renderAuditReport(){
 }
 
 // ---------- init ----------
+// ---------- user roles ----------
+const ROLE_KEY = 'shop-role-screens';
+let currentRole = null;
+
+function applyRolePermissions(role){
+  currentRole = role;
+  document.body.classList.toggle('role-employee', role==='employee');
+}
+
+function showLoginScreen(){
+  document.getElementById('real-app').classList.add('hidden');
+  document.getElementById('login-screen').style.display = 'flex';
+}
+
+function enterApp(role){
+  localStorage.setItem(ROLE_KEY, role);
+  applyRolePermissions(role);
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('real-app').classList.remove('hidden');
+}
+
+function ownerLoginModal(){
+  return new Promise(resolve=>{
+    openModal(`
+      <div class="modal-title">دخول المالك</div>
+      <div class="field">
+        <label>رمز الدخول (PIN)</label>
+        <input type="password" id="owner-pin-input" inputmode="numeric" placeholder="****">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="modal-cancel">إلغاء</button>
+        <button class="btn btn-primary" id="modal-save">دخول</button>
+      </div>
+    `);
+    document.getElementById('modal-cancel').onclick = ()=>{ closeModal(); resolve(null); };
+    document.getElementById('modal-save').onclick = ()=>{
+      const pin = document.getElementById('owner-pin-input').value.trim();
+      closeModal();
+      resolve(pin);
+    };
+  });
+}
+
+document.getElementById('login-owner-btn').addEventListener('click', async ()=>{
+  const pin = await ownerLoginModal();
+  if(pin===null) return;
+  if(pin === (state.settings.ownerPin||'1234')){
+    enterApp('owner');
+  } else {
+    showToast('رمز غير صحيح');
+  }
+});
+document.getElementById('login-employee-btn').addEventListener('click', ()=>{
+  enterApp('employee');
+});
+document.getElementById('switch-user-btn').addEventListener('click', ()=>{
+  localStorage.removeItem(ROLE_KEY);
+  showLoginScreen();
+});
+
+async function changeOwnerPinModal(){
+  return new Promise(resolve=>{
+    openModal(`
+      <div class="modal-title">تغيير رمز المالك</div>
+      <div class="field">
+        <label>الرمز الحالي</label>
+        <input type="password" id="pin-current" inputmode="numeric">
+      </div>
+      <div class="field">
+        <label>الرمز الجديد</label>
+        <input type="password" id="pin-new" inputmode="numeric">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="modal-cancel">إلغاء</button>
+        <button class="btn btn-primary" id="modal-save">حفظ</button>
+      </div>
+    `);
+    document.getElementById('modal-cancel').onclick = ()=>{ closeModal(); resolve(null); };
+    document.getElementById('modal-save').onclick = ()=>{
+      const cur = document.getElementById('pin-current').value.trim();
+      const next = document.getElementById('pin-new').value.trim();
+      if(cur !== (state.settings.ownerPin||'1234')){ showToast('الرمز الحالي غلط'); return; }
+      if(!next){ showToast('اكتب رمز جديد'); return; }
+      closeModal();
+      resolve(next);
+    };
+  });
+}
+
 (async function init(){
   document.getElementById('today-date').textContent = new Date().toLocaleDateString('ar-EG',{weekday:'long', day:'numeric', month:'long', year:'numeric'});
   await loadData();
+  if(!state.settings.ownerPin){ state.settings.ownerPin = '1234'; await saveData(); }
   document.getElementById('currency-input').value = state.settings.currency;
   renderAll();
   renderBuyForm();
   formatNumberInput(document.getElementById('sell-price'));
   document.getElementById('loading').style.display='none';
-  document.getElementById('real-app').classList.remove('hidden');
+  const savedRole = localStorage.getItem(ROLE_KEY);
+  if(savedRole==='owner' || savedRole==='employee'){
+    enterApp(savedRole);
+  } else {
+    showLoginScreen();
+  }
 })();
 </script>
 </body>
