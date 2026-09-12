@@ -1656,7 +1656,7 @@
 </div>
 
 <script>
-let state = { settings:{ currency:'د.ع' }, products:[], transactions:[], payments:[], stocktakes:[], purchaseRequests:[], nextProductCode:1 };
+let state = { settings:{ currency:'د.ع' }, products:[], transactions:[], payments:[], stocktakes:[], purchaseRequests:[], nextProductCode:1, nextInvoiceNumber:1 };
 const STORE_KEY = 'shop-data-screens';
 
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
@@ -1749,7 +1749,7 @@ async function loadData(){
     const raw = localStorage.getItem(STORE_KEY);
     if(raw){
       const parsed = JSON.parse(raw);
-      state = Object.assign({settings:{currency:'د.ع'},products:[],transactions:[],payments:[],stocktakes:[],purchaseRequests:[],nextProductCode:1}, parsed);
+      state = Object.assign({settings:{currency:'د.ع'},products:[],transactions:[],payments:[],stocktakes:[],purchaseRequests:[],nextProductCode:1,nextInvoiceNumber:1}, parsed);
     }
   }catch(e){
     // no data yet, keep defaults
@@ -2380,7 +2380,7 @@ function reprintInvoice(invoiceId){
   }
   showInvoice({
     items, total, customerName:first.customerName, customerPhone:first.customerPhone,
-    paymentType:first.paymentType, date:new Date(first.date),
+    paymentType:first.paymentType, date:new Date(first.date), invoiceNumber: first.invoiceNumber,
     paid, remaining, prevBalance, currentBalance: prevBalance + remaining
   });
 }
@@ -2906,6 +2906,7 @@ function openBackupModal(){
       <button class="btn btn-ghost" id="btn-export">نسخة احتياطية (للاستعادة لاحقًا)</button>
       <button class="btn btn-ghost" id="btn-import">استيراد نسخة احتياطية</button>
       <button class="btn btn-ghost" id="btn-change-pin">تغيير رمز دخول المالك</button>
+      <button class="btn btn-danger-text" id="btn-clear-data" style="width:100%;">مسح كل البيانات والبدء من جديد</button>
     </div>
     <input type="file" id="import-file-input" accept="application/json" style="display:none;">
   `);
@@ -2919,6 +2920,27 @@ function openBackupModal(){
     state.settings.ownerPin = newPin;
     await saveData();
     showToast('تم تغيير رمز المالك');
+  };
+  document.getElementById('btn-clear-data').onclick = async ()=>{
+    const ok1 = await confirmModal(
+      'هذا الإجراء بيمسح كل شي نهائيًا: المخزون، الفواتير، الديون، والتقارير. لا يمكن التراجع عنه. تأكد إنك صدّرت نسخة احتياطية قبل ما تكمل.',
+      { title:'⚠️ مسح كل البيانات', confirmLabel:'متأكد، كمّل' }
+    );
+    if(!ok1) return;
+    const ok2 = await confirmModal(
+      'تأكيد أخير: بتنمسح كل البيانات نهائيًا وما رح ترجع. هل أنت متأكد 100%؟',
+      { title:'تأكيد نهائي', confirmLabel:'إي، امسح كل شي' }
+    );
+    if(!ok2) return;
+    const keepPin = state.settings.ownerPin;
+    const keepCurrency = state.settings.currency;
+    state = { settings:{ currency:keepCurrency, ownerPin:keepPin }, products:[], transactions:[], payments:[], stocktakes:[], purchaseRequests:[], nextProductCode:1, nextInvoiceNumber:1 };
+    await saveData();
+    closeModal();
+    renderAll();
+    renderBuyForm();
+    document.querySelector('nav.bottom button[data-tab="sell"]').click();
+    showToast('تم مسح كل البيانات — جاهز تبدأ من جديد');
   };
 }
 document.getElementById('backup-btn').addEventListener('click', openBackupModal);
@@ -3029,7 +3051,7 @@ async function handleImportFile(e){
       { title:'استيراد نسخة احتياطية', confirmLabel:'استيراد واستبدال' }
     );
     if(!ok) return;
-    state = Object.assign({settings:{currency:'د.ع'},products:[],transactions:[],payments:[],stocktakes:[],purchaseRequests:[],nextProductCode:1}, parsed);
+    state = Object.assign({settings:{currency:'د.ع'},products:[],transactions:[],payments:[],stocktakes:[],purchaseRequests:[],nextProductCode:1,nextInvoiceNumber:1}, parsed);
     await saveData();
     document.getElementById('currency-input').value = state.settings.currency;
     renderAll();
@@ -3232,6 +3254,8 @@ document.getElementById('sell-finalize').addEventListener('click', async ()=>{
   const customerPhone = document.getElementById('credit-customer-phone').value.trim();
   if(sellPaymentType==='credit' && !customerName){ showToast('اكتب اسم الزبون للبيع بالأجل'); return; }
   const invoiceId = uid();
+  const invoiceNumber = state.nextInvoiceNumber || 1;
+  state.nextInvoiceNumber = invoiceNumber + 1;
   const invoiceItems = [];
   const subtotal = sellCart.reduce((s,i)=>s+i.qty*i.unitPrice,0);
   const discount = Math.min(parseNum(document.getElementById('sell-discount').value) || 0, subtotal);
@@ -3244,7 +3268,7 @@ document.getElementById('sell-finalize').addEventListener('click', async ()=>{
     const total = +(rawTotal - itemDiscount).toFixed(2);
     const totalCost = item.qty*p.buyPrice;
     state.transactions.push({
-      id: uid(), invoiceId, type:'sale', productId:p.id, productName:p.name, category:(p.category||'شاشة'),
+      id: uid(), invoiceId, invoiceNumber, type:'sale', productId:p.id, productName:p.name, category:(p.category||'شاشة'),
       qty:item.qty, unitPrice:item.unitPrice, total, unitCost:p.buyPrice, totalCost,
       discount: +itemDiscount.toFixed(2), note: item.note||'',
       profit: +(total-totalCost).toFixed(2), date: todayISO(),
@@ -3279,7 +3303,7 @@ document.getElementById('sell-finalize').addEventListener('click', async ()=>{
   }
   showInvoice({
     items: invoiceItems, total: invoiceTotal, discount, customerName, customerPhone,
-    paymentType: wasCredit?'credit':'cash', date: new Date(),
+    paymentType: wasCredit?'credit':'cash', date: new Date(), invoiceNumber,
     paid: paidAmount, remaining: remainingAmount,
     prevBalance, currentBalance: prevBalance + remainingAmount
   });
@@ -3299,6 +3323,8 @@ function buildInvoiceText(inv){
   const lines = [];
   lines.push('🧾 *فاتورة بيع*');
   lines.push('🏪 *باور فون*');
+  lines.push('لبيع الهواتف والاكسسوارات');
+  lines.push(`رقم الفاتورة: ${inv.invoiceNumber||'—'}`);
   lines.push(`📅 ${dateStr}`);
   if(inv.customerName) lines.push(`👤 الزبون: ${inv.customerName}`);
   lines.push(divider);
@@ -3308,7 +3334,7 @@ function buildInvoiceText(inv){
   });
   lines.push(divider);
   if(inv.discount>0) lines.push(`🏷️ خصم: ${money(inv.discount)}`);
-  lines.push(`💰 *الإجمالي: ${money(inv.total)}*`);
+  lines.push(`💰 *صافي الفاتورة: ${money(inv.total)}*`);
   if(inv.paymentType==='credit') lines.push('⚠️ _بيع بالأجل — غير مسدد بعد_');
   lines.push('');
   lines.push('🙏 شكرًا لتعاملكم معنا');
@@ -3316,48 +3342,39 @@ function buildInvoiceText(inv){
 }
 
 function showInvoice(inv){
-  const dateStr = inv.date.toLocaleDateString('ar-EG',{day:'numeric',month:'long',year:'numeric'})+' · '+inv.date.toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'});
-  const rows = inv.items.map((it,idx)=>`
+  const dateOnly = inv.date.toLocaleDateString('sv-SE');
+  const rows = inv.items.map(it=>`
     <tr>
-      <td class="cell-qty" style="padding:6px 4px;">${idx+1}</td>
-      <td class="cell-model" style="font-family:var(--font-num);padding:6px 4px;">${it.code||'—'}</td>
-      <td class="cell-name" style="padding:6px 4px;">${escapeHtml(it.name)}${it.model?(' <span style="color:var(--ink-soft);font-weight:600;">- '+escapeHtml(it.model)+'</span>'):''}</td>
-      <td class="cell-qty" style="padding:6px 4px;">${it.qty}</td>
-      <td class="cell-model" style="padding:6px 4px;">قطعة</td>
-      <td class="cell-num" style="padding:6px 4px;">${fmt(it.unitPrice)}</td>
-      <td class="cell-num" style="padding:6px 4px;">${fmt(it.total)}</td>
+      <td class="cell-name" style="padding:9px 4px;">${escapeHtml(it.name)}${it.model?(' <span style="color:var(--ink-soft);font-weight:600;">- '+escapeHtml(it.model)+'</span>'):''}</td>
+      <td class="cell-qty" style="padding:9px 4px;">${it.qty}</td>
+      <td class="cell-num" style="padding:9px 4px;">${fmt(it.unitPrice)}</td>
+      <td class="cell-num" style="padding:9px 4px;">${fmt(it.total)}</td>
     </tr>`).join('');
   openModal(`
-    <div class="modal-title">فاتورة بيع — باور فون</div>
-    <div class="modal-text">${dateStr}${inv.customerName?(' · الزبون: '+escapeHtml(inv.customerName)):''}${inv.customerPhone?(' · '+escapeHtml(inv.customerPhone)):''}</div>
-    <div class="table-wrap" style="display:block;margin-bottom:4px;">
-      <table class="data-table" style="font-size:10.5px;table-layout:fixed;width:100%;">
-        <colgroup>
-          <col style="width:6%;"><col style="width:11%;"><col style="width:29%;">
-          <col style="width:9%;"><col style="width:11%;"><col style="width:17%;"><col style="width:17%;">
-        </colgroup>
-        <thead><tr><th style="padding:6px 4px;">#</th><th style="padding:6px 4px;">رمز</th><th style="padding:6px 4px;">اسم المادة</th><th style="padding:6px 4px;">كمية</th><th style="padding:6px 4px;">وحدة</th><th style="padding:6px 4px;">افرادي</th><th style="padding:6px 4px;">اجمالي</th></tr></thead>
+    <div style="text-align:center;margin-bottom:14px;">
+      <div style="font-size:22px;font-weight:900;">باور فون</div>
+      <div style="font-size:12px;color:var(--ink-soft);font-weight:700;margin-top:2px;">لبيع الهواتف والاكسسوارات</div>
+    </div>
+    <div style="border-top:1.5px solid var(--line);margin-bottom:12px;"></div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
+      <div style="font-size:12.5px;font-weight:700;color:var(--ink-soft);">التاريخ: ${dateOnly}</div>
+      <div style="text-align:left;">
+        <div style="font-size:12.5px;font-weight:800;">رقم الفاتورة: ${inv.invoiceNumber||'—'}</div>
+        ${inv.customerName ? `<div style="font-size:12.5px;font-weight:700;color:var(--ink-soft);margin-top:2px;">الزبون: ${escapeHtml(inv.customerName)}</div>` : ''}
+      </div>
+    </div>
+    <div class="table-wrap" style="display:block;margin-bottom:14px;">
+      <table class="data-table" style="font-size:12px;">
+        <thead><tr><th>اسم المادة</th><th>الكمية</th><th>السعر الافرادي</th><th>الاجمالي</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
-    <div class="modal-text" style="margin:0 0 10px;font-size:10.5px;">الأسعار بالجدول بالـ${escapeHtml(state.settings.currency)} (بدون رمز العملة لضيق المساحة)</div>
-    <div class="txn-row" style="padding:0 0 10px;">
-      <span class="txn-name" style="font-weight:900;">الإجمالي الكلي</span>
-      <span class="txn-num profit" style="font-size:16px;">${money(inv.total)}</span>
+    <div style="border-top:1.5px solid var(--line);margin-bottom:12px;"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <span style="font-size:14px;font-weight:800;color:var(--ink-soft);">صافي الفاتورة</span>
+      <span style="font-size:24px;font-weight:900;">${money(inv.total)}</span>
     </div>
-    ${inv.discount>0 ? `<div class="modal-text" style="margin-top:-6px;">شامل خصم: ${money(inv.discount)}</div>` : ''}
-    <div class="modal-text" style="margin-bottom:10px;background:var(--bg);border:1.5px dashed var(--line);border-radius:8px;padding:8px 10px;">
-      <b>المبلغ كتابة:</b> ${numberToArabicWords(inv.total)} ${escapeHtml(state.settings.currency==='د.ع'?'دينار عراقي':state.settings.currency)} لا غير
-    </div>
-    ${(inv.paid!==undefined) ? `
-    <div class="stat-grid" style="grid-template-columns:repeat(2,1fr);margin-bottom:10px;">
-      <div class="stat-box"><div class="label">دفعة</div><div class="value">${money(inv.paid)}</div></div>
-      <div class="stat-box ${inv.remaining>0?'highlight':''}"><div class="label">باقي للدفع</div><div class="value">${money(inv.remaining)}</div></div>
-      <div class="stat-box"><div class="label">رصيد سابق</div><div class="value">${money(inv.prevBalance||0)}</div></div>
-      <div class="stat-box ${inv.currentBalance>0?'highlight':''}"><div class="label">رصيد حالي</div><div class="value">${money(inv.currentBalance||0)}</div></div>
-    </div>` : ''}
-    ${inv.paymentType==='credit' ? `<div class="modal-text" style="color:var(--rust);font-weight:700;">بيع بالأجل — غير مسدد بعد</div>` : ''}
-    <div style="border:1.5px solid var(--ink);border-radius:8px;padding:16px 8px;text-align:center;margin:10px 0 6px;font-weight:800;color:var(--ink-soft);font-size:11px;">الختم والتوقيع</div>
+    ${inv.paymentType==='credit' ? `<div class="modal-text" style="color:var(--rust);font-weight:700;margin-bottom:10px;">بيع بالأجل — غير مسدد بعد</div>` : ''}
     <div class="modal-actions" style="flex-direction:column;">
       <button class="btn" style="background:#25D366;color:#fff;" id="invoice-whatsapp">إرسال عبر واتساب</button>
       <button class="btn btn-primary" id="invoice-print">طباعة الفاتورة</button>
@@ -3409,16 +3426,21 @@ function renderBuyForm(){
             <div class="picker-results" id="buy-product-results"></div>
           </div>
           <input type="hidden" id="buy-product">
+          <div id="buy-current-stock" style="display:none;margin-top:6px;"></div>
         </div>
         <div class="field-row">
           <div class="field">
             <label>الكمية المشتراة</label>
-            <input type="number" id="buy-qty" min="1" step="1" required placeholder="1">
+            <input type="number" id="buy-qty" min="1" step="1" required placeholder="1" value="1">
           </div>
           <div class="field">
             <label>سعر الشراء للقطعة</label>
             <input type="text" id="buy-price" placeholder="0" required>
           </div>
+        </div>
+        <div class="stat-box highlight" style="margin-bottom:12px;">
+          <div class="label">المجموع</div>
+          <div class="value" id="buy-total-preview">0</div>
         </div>
         <button type="submit" class="btn btn-primary">تسجيل الشراء وتحديث المخزون</button>
       </form>`;
@@ -3431,12 +3453,26 @@ function renderBuyForm(){
       buySelectedCategory = btn.dataset.cat;
       document.getElementById('buy-product-input').value='';
       document.getElementById('buy-product').value='';
+      document.getElementById('buy-current-stock').style.display='none';
     });
+    function updateBuyTotalPreview(){
+      const qty = parseInt(document.getElementById('buy-qty').value,10) || 0;
+      const price = parseNum(document.getElementById('buy-price').value) || 0;
+      document.getElementById('buy-total-preview').textContent = money(qty*price);
+    }
     setupProductPicker({
       inputId:'buy-product-input', hiddenId:'buy-product', resultsId:'buy-product-results',
       getPool: ()=> state.products.filter(p=> buySelectedCategory==='الكل' || (p.category||'شاشة')===buySelectedCategory),
-      onSelect: (p)=>{ document.getElementById('buy-price').value = fmt(p.buyPrice); }
+      onSelect: (p)=>{
+        document.getElementById('buy-price').value = fmt(p.buyPrice);
+        const stockEl = document.getElementById('buy-current-stock');
+        stockEl.style.display = 'block';
+        stockEl.innerHTML = `<span class="status-pill ${p.qty<=2?'status-low':'status-ok'}">عندك حاليًا: ${p.qty} قطعة</span>`;
+        updateBuyTotalPreview();
+      }
     });
+    document.getElementById('buy-qty').addEventListener('input', updateBuyTotalPreview);
+    document.getElementById('buy-price').addEventListener('input', updateBuyTotalPreview);
     document.getElementById('form-buy-existing').addEventListener('submit', submitBuyExisting);
     formatNumberInput(document.getElementById('buy-price'));
   } else if(buyMode==='new'){
@@ -3690,6 +3726,8 @@ async function submitBuyExisting(e){
   });
   await saveData();
   e.target.reset();
+  document.getElementById('buy-current-stock').style.display='none';
+  document.getElementById('buy-total-preview').textContent = money(0);
   renderAll();
   showToast('تم تسجيل الشراء وتحديث المخزون');
 }
