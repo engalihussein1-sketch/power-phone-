@@ -950,14 +950,18 @@
     padding:7px 9px;
     text-align:right;
     white-space:nowrap;
+    border-left:1px solid rgba(255,255,255,.25);
   }
+  .data-table th:last-child{border-left:none;}
   .data-table td{
     padding:6px 9px;
     border-bottom:1.5px solid var(--line-soft);
+    border-left:1px solid var(--line-soft);
     white-space:nowrap;
     font-weight:600;
     font-size:12.5px;
   }
+  .data-table td:last-child{border-left:none;}
   .data-table tbody tr:nth-child(even){background:var(--brass-soft);}
   .data-table tbody tr:hover{background:var(--sage-soft);}
   .data-table tbody tr:last-child td{border-bottom:none;}
@@ -1246,9 +1250,11 @@
                 <th>الرمز</th>
                 <th>المادة</th>
                 <th>الفئة</th>
+                <th>الموديل</th>
                 <th>الحالة</th>
                 <th>الكمية</th>
-                <th>الشراء ← البيع</th>
+                <th>سعر الشراء</th>
+                <th>سعر البيع</th>
                 <th>القيمة</th>
                 <th></th>
               </tr>
@@ -1921,16 +1927,15 @@ function renderInventory(){
       <td>
         <div style="display:flex;align-items:center;gap:9px;">
           <div class="product-avatar" style="width:32px;height:32px;font-size:13px;background:${pal.bg};color:${pal.fg};flex-shrink:0;">${escapeHtml((p.name||'?').trim().charAt(0).toUpperCase())}</div>
-          <div>
-            <div class="cell-name" style="font-weight:800;">${escapeHtml(p.name)}</div>
-            ${p.model ? `<div style="font-size:10.5px;color:var(--ink-soft);font-weight:600;">${escapeHtml(p.model)}</div>` : ''}
-          </div>
+          <span class="cell-name" style="font-weight:800;">${escapeHtml(p.name)}</span>
         </div>
       </td>
       <td class="cell-model">${escapeHtml(p.category||'شاشة')}</td>
+      <td class="cell-model">${escapeHtml(p.model||'')}</td>
       <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
       <td class="cell-qty">${p.qty}${p.defectiveQty>0 ? `<br><span style="color:var(--rust);font-size:10px;font-weight:800;">+${p.defectiveQty} معطلة</span>` : ''}</td>
-      <td class="cell-num">${fmt(p.buyPrice)} ← ${fmt(p.sellPrice)}</td>
+      <td class="cell-num">${money(p.buyPrice)}</td>
+      <td class="cell-num">${money(p.sellPrice)}</td>
       <td class="cell-num">${money(p.qty*p.buyPrice)}</td>
       <td>
         <div class="row-icons">
