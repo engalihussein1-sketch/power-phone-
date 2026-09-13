@@ -965,7 +965,8 @@
   .data-table tbody tr:nth-child(even){background:var(--brass-soft);}
   .data-table tbody tr:hover{background:var(--sage-soft);}
   .data-table tbody tr:last-child td{border-bottom:none;}
-  .data-table td.cell-name{font-weight:800;white-space:normal;}
+  .data-table td.cell-name{font-weight:800;white-space:normal;font-size:14px;}
+  .data-table .cell-name{font-size:14px;}
   .data-table td.cell-model{color:var(--ink-soft);white-space:normal;}
   .data-table td.cell-num{font-family:var(--font-num);direction:ltr;text-align:right;font-weight:700;}
   .data-table td.cell-qty{font-family:var(--font-num);text-align:center;font-weight:800;}
@@ -1357,7 +1358,7 @@
             <div class="field-row">
               <div class="field">
                 <label>الكمية المشتراة</label>
-                <input type="number" id="buy-qty" min="1" step="1" required placeholder="1">
+                <input type="text" inputmode="numeric" pattern="[0-9]*" id="buy-qty" min="1" step="1" required placeholder="1">
               </div>
               <div class="field">
                 <label>سعر الشراء للقطعة</label>
@@ -1720,6 +1721,19 @@ function todayISO(){ return new Date().toISOString(); }
 function parseNum(str){
   return parseFloat(String(str||'').replace(/,/g,''));
 }
+const ARABIC_DIGIT_MAP = {'٠':'0','١':'1','٢':'2','٣':'3','٤':'4','٥':'5','٦':'6','٧':'7','٨':'8','٩':'9','۰':'0','۱':'1','۲':'2','۳':'3','۴':'4','۵':'5','۶':'6','۷':'7','۸':'8','۹':'9'};
+document.addEventListener('input', (e)=>{
+  const el = e.target;
+  if(el && el.tagName==='INPUT' && el.getAttribute('inputmode')==='numeric'){
+    const converted = el.value.replace(/[٠-٩۰-۹]/g, d=>ARABIC_DIGIT_MAP[d]||d);
+    if(converted !== el.value){
+      const pos = el.selectionStart;
+      el.value = converted;
+      if(pos!==null) el.setSelectionRange(pos, pos);
+    }
+  }
+});
+
 function formatNumberInput(el){
   if(!el || el.dataset.numFormatted) return;
   el.dataset.numFormatted = '1';
@@ -2244,7 +2258,7 @@ function editTransactionModal(t){
       <div class="field-row">
         <div class="field">
           <label>الكمية</label>
-          <input type="number" id="txn-edit-qty" min="1" step="1" value="${t.qty}">
+          <input type="text" inputmode="numeric" pattern="[0-9]*" id="txn-edit-qty" min="1" step="1" value="${t.qty}">
         </div>
         <div class="field">
           <label>السعر للقطعة</label>
@@ -2697,7 +2711,7 @@ function openAddProductModal(){
       <div class="field-row">
         <div class="field">
           <label>الكمية</label>
-          <input type="number" id="np-qty" min="0" step="1" placeholder="0">
+          <input type="text" inputmode="numeric" pattern="[0-9]*" id="np-qty" min="0" step="1" placeholder="0">
         </div>
         <div class="field">
           <label>سعر الشراء (للقطعة)</label>
@@ -2812,7 +2826,7 @@ function editProductModal(p){
       </div>
       <div class="field">
         <label>الكمية</label>
-        <input type="number" id="modal-qty" min="0" step="1" value="${p.qty}">
+        <input type="text" inputmode="numeric" pattern="[0-9]*" id="modal-qty" min="0" step="1" value="${p.qty}">
       </div>
       <div class="modal-actions">
         <button class="btn btn-ghost" id="modal-cancel">إلغاء</button>
@@ -3132,7 +3146,7 @@ function renderSellCart(){
         <td class="cell-qty">${idx+1}</td>
         <td class="cell-model">${code}</td>
         <td class="cell-name">${escapeHtml(item.productName)}</td>
-        <td><input type="number" class="table-cell-input cart-qty-input" data-idx="${idx}" min="1" step="1" value="${item.qty}"></td>
+        <td><input type="text" inputmode="numeric" pattern="[0-9]*" class="table-cell-input cart-qty-input" data-idx="${idx}" min="1" step="1" value="${item.qty}"></td>
         <td><input type="text" class="table-cell-input cart-price-input" data-idx="${idx}" value="${fmt(item.unitPrice)}"></td>
         <td class="cell-num cart-row-total" data-idx="${idx}">${money(item.qty*item.unitPrice)}</td>
         <td>
@@ -3436,7 +3450,7 @@ function renderBuyForm(){
         <div class="field-row">
           <div class="field">
             <label>الكمية المشتراة</label>
-            <input type="number" id="buy-qty" min="1" step="1" required placeholder="1" value="1">
+            <input type="text" inputmode="numeric" pattern="[0-9]*" id="buy-qty" min="1" step="1" required placeholder="1" value="1">
           </div>
           <div class="field">
             <label>سعر الشراء للقطعة</label>
@@ -3494,7 +3508,7 @@ function renderBuyForm(){
         <div class="field-row">
           <div class="field">
             <label>الكمية</label>
-            <input type="number" id="bn-qty" min="1" step="1" required placeholder="1">
+            <input type="text" inputmode="numeric" pattern="[0-9]*" id="bn-qty" min="1" step="1" required placeholder="1">
           </div>
           <div class="field">
             <label>سعر الشراء للقطعة</label>
@@ -3538,7 +3552,7 @@ function renderReturnForm(card){
     <div class="field-row">
       <div class="field">
         <label>الكمية المرتجعة</label>
-        <input type="number" id="return-qty" min="1" step="1" placeholder="1">
+        <input type="text" inputmode="numeric" pattern="[0-9]*" id="return-qty" min="1" step="1" placeholder="1">
       </div>
       <div class="field">
         <label>مبلغ الاسترجاع للقطعة</label>
@@ -3628,7 +3642,7 @@ function renderPurchaseRequests(card){
     <div class="field-row">
       <div class="field">
         <label>الكمية المطلوبة</label>
-        <input type="number" id="pr-qty" min="1" step="1" value="1">
+        <input type="text" inputmode="numeric" pattern="[0-9]*" id="pr-qty" min="1" step="1" value="1">
       </div>
       <div class="field">
         <label>ملاحظة (اختياري)</label>
